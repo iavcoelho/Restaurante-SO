@@ -125,21 +125,33 @@ int main(int argc, char *argv[]) {
  */
 static void waitForOrder() {
 
-  // TODO insert your code here
+  // First we need to see if there is an order pending
+  if (semDown(semgid, sh->waitOrder) == -1) {
+    perror("error on the up operation for semaphore access (PT)");
+    exit(EXIT_FAILURE);
+  }
 
   if (semDown(semgid, sh->mutex) == -1) { /* enter critical region */
     perror("error on the up operation for semaphore access (PT)");
     exit(EXIT_FAILURE);
   }
 
-  // TODO insert your code here
+  // Now we can start processing the order and alter the corresponding state
+  lastGroup = sh->fSt.foodGroup;
+  sh->fSt.foodOrder = 0;
+  sh->fSt.st.chefStat = COOK;
+  saveState(nFic, &sh->fSt);
 
   if (semUp(semgid, sh->mutex) == -1) { /* exit critical region */
     perror("error on the up operation for semaphore access (PT)");
     exit(EXIT_FAILURE);
   }
 
-  // TODO insert your code here
+  // Now we need to acknowledge that the order was received
+  if (semUp(semgid, sh->orderReceived) == -1) {
+    perror("error on the up operation for semaphore access (PT)");
+    exit(EXIT_FAILURE);
+  }
 }
 
 /**
@@ -152,20 +164,37 @@ static void waitForOrder() {
  */
 static void processOrder() {
   usleep((unsigned int)floor((MAXCOOK * random()) / RAND_MAX + 100.0));
+  request req;
 
-  // TODO insert your code here
+  // First lets start by checking whether or not the waiter is available
+  if (semDown(semgid, sh->waiterRequestPossible) == -1) {
+    perror("error on the up operation for semaphore access (PT)");
+    exit(EXIT_FAILURE);
+  }
 
   if (semDown(semgid, sh->mutex) == -1) { /* enter critical region */
     perror("error on the up operation for semaphore access (PT)");
     exit(EXIT_FAILURE);
   }
 
-  // TODO insert your code here
+  // We can now start by formulating the request
+  req.reqGroup = lastGroup;
+  req.reqType = FOODREADY;
+  // And give the request to the waiter
+  sh->fSt.waiterRequest = req;
+
+  // Now we update the chef's state
+  sh->fSt.st.chefStat = WAIT_FOR_ORDER;
+  saveState(nFic, &sh->fSt);
 
   if (semUp(semgid, sh->mutex) == -1) { /* exit critical region */
     perror("error on the up operation for semaphore access (PT)");
     exit(EXIT_FAILURE);
   }
 
-  // TODO insert your code here
+  // Now we signal the waiter that he has a new request
+  if (semUp(semgid, sh->waiterRequest) == -1) {
+    perror("error on the up operation for semaphore access (PT)");
+    exit(EXIT_FAILURE);
+  }
 }
